@@ -46,14 +46,14 @@ jobs:
         run: |
           set -e
           ROOT="${GITHUB_WORKSPACE}"
-          if [ -f "$ROOT/Dockerfile" ]; then
+          if [ -f "$ROOT/Dockerfile.api" ]; then
             echo "CTX=$ROOT" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/Dockerfile" >> $GITHUB_OUTPUT
-          elif [ -f "$ROOT/TenderBot/Dockerfile" ]; then
+            echo "FILE=$ROOT/Dockerfile.api" >> $GITHUB_OUTPUT
+          elif [ -f "$ROOT/TenderBot/Dockerfile.api" ]; then
             echo "CTX=$ROOT/TenderBot" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/TenderBot/Dockerfile" >> $GITHUB_OUTPUT
+            echo "FILE=$ROOT/TenderBot/Dockerfile.api" >> $GITHUB_OUTPUT
           else
-            echo "::error::Neviem nájsť Dockerfile pre API"
+            echo "::error::Neviem nájsť Dockerfile.api pre API"
             exit 1
           fi
 
