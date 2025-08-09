@@ -1,23 +1,27 @@
+
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
-from typing import List
+
 from .embeddings import embed_texts
-from .qdrant_client_utils import ensure_collection, upsert_points, search
+from .qdrant_client_utils import ensure_collection, search, upsert_points
 
 app = FastAPI(title="TenderBot API", version="0.1.0")
 
+
 class QARequest(BaseModel):
     question: str
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 @app.post("/ingest")
 def ingest():
     """Load sample_data/notices.csv and index to Qdrant."""
-    import csv, os
-    from .config import settings
+    import csv
+    import os
 
     ensure_collection()
     csv_path = os.path.join(os.path.dirname(__file__), "..", "sample_data", "notices.csv")
@@ -28,17 +32,25 @@ def ingest():
     texts = [f"{r['title']}\n{r['description']}" for r in rows]
     vectors = embed_texts(texts)
     payloads = [
-        {"id": r["id"], "title": r["title"], "description": r["description"], "url": r["url"], "deadline": r["deadline"]}
+        {
+            "id": r["id"],
+            "title": r["title"],
+            "description": r["description"],
+            "url": r["url"],
+            "deadline": r["deadline"],
+        }
         for r in rows
     ]
     upsert_points(payloads, vectors)
     return {"ingested": len(rows)}
+
 
 @app.get("/search")
 def search_route(q: str = Query(..., min_length=2), k: int = 5):
     vec = embed_texts([q])[0]
     hits = search(vec, limit=k)
     return {"query": q, "results": hits}
+
 
 @app.post("/qa")
 def qa(req: QARequest):

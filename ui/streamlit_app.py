@@ -1,4 +1,5 @@
 import os
+
 import requests
 import streamlit as st
 
@@ -31,4 +32,6 @@ with tabs[1]:
         st.write(data.get("answer"))
 
 with tabs[2]:
-    st.info("Alerts not wired to email in demo. Idea: Prefect schedule searches and notify on matches.")
+    st.info(
+        "Alerts not wired to email in demo. Idea: Prefect schedule searches and notify on matches."
+    )

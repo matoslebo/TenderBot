@@ -1,7 +1,10 @@
+from http import HTTPStatus
+
 import pytest
 from httpx import AsyncClient
+
 from app.main import app
-from http import HTTPStatus
+
 
 @pytest.mark.asyncio
 async def test_health():

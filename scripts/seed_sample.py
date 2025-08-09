@@ -1,5 +1,7 @@
 """Create a tiny sample CSV and trigger ingest via API."""
-import csv, os
+
+import csv
+import os
 from datetime import date, timedelta
 
 DATA = [
@@ -33,6 +35,7 @@ print(f"Wrote {CSV_PATH}")
 # Optionally call API /ingest
 try:
     import requests
+
     r = requests.post("http://localhost:8000/ingest", timeout=30)
     print("Ingest response:", r.json())
 except Exception as e:

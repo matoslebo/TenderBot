@@ -1,7 +1,8 @@
-import pandas as pd
 import great_expectations as ge
+import pandas as pd
 
 REQUIRED_COLS = ["id", "title", "description", "url", "deadline"]
+
 
 def validate_df(df: pd.DataFrame):
     for c in REQUIRED_COLS:
