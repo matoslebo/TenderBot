@@ -1,0 +1,133 @@
+name: build-deploy-azure
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'app/**'
+      - 'ui/**'
+      - 'Dockerfile'
+      - 'Dockerfile.ui'
+      - 'requirements.txt'
+      - '.github/workflows/deploy.yml'
+      - 'infra/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
+      ACR: ${{ secrets.ACR_LOGIN_SERVER }}
+      ACR_NAME: ${{ secrets.ACR_NAME }}
+      API_APP: ts-api
+      UI_APP: ts-ui
+      QDRANT_APP: ts-qdrant
+      ENV_NAME: ts-env      # ak máš iné meno v bicepe, uprav
+      API_IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/api:${{ github.sha }}
+      UI_IMAGE:  ${{ secrets.ACR_LOGIN_SERVER }}/ui:${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Login do Azure (OIDC / service principal)
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Login do ACR a build & push oboch image
+      - name: ACR login
+        run: az acr login -n $ACR_NAME
+
+      - name: Build & push API
+        run: |
+          docker build -t $API_IMAGE -f Dockerfile .
+          docker push $API_IMAGE
+
+      - name: Build & push UI
+        run: |
+          docker build -t $UI_IMAGE -f Dockerfile.ui .
+          docker push $UI_IMAGE
+
+      # CLI extension pre Container Apps
+      - name: Enable Container Apps extension
+        run: |
+          az extension add --name containerapp --yes || az extension update --name containerapp
+          az provider register --namespace Microsoft.App
+
+      # Qdrant (internal ingress) – idempotent create/update
+      - name: Deploy Qdrant
+        run: |
+          set -e
+          if az containerapp show -n $QDRANT_APP -g $RG >/dev/null 2>&1; then
+            az containerapp update -n $QDRANT_APP -g $RG \
+              --image qdrant/qdrant:v1.8.4 \
+              --min-replicas 1 --max-replicas 1 \
+              --cpu 1 --memory 2Gi
+          else
+            az containerapp create -n $QDRANT_APP -g $RG --environment $ENV_NAME \
+              --image qdrant/qdrant:v1.8.4 \
+              --target-port 6333 --ingress internal \
+              --min-replicas 1 --max-replicas 1 \
+              --cpu 1 --memory 2Gi
+          fi
+
+      # API (external) – napojenie na interný Qdrant + LLM key v secretoch
+      - name: Deploy API
+        run: |
+          set -e
+          if az containerapp show -n $API_APP -g $RG >/dev/null 2>&1; then
+            az containerapp update -n $API_APP -g $RG \
+              --image $API_IMAGE \
+              --set-env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
+                             ENABLE_STRUCTURED_EXTRACT=true \
+                             LLM_MODEL_PROVIDER=openai \
+                             LLM_MODEL_NAME=gpt-4o-mini \
+                             RERANK_CANDIDATES=10 \
+                             OPENAI_API_KEY=secretref:OPENAI_KEY \
+              --secrets OPENAI_KEY=${{ secrets.OPENAI_KEY }} \
+              --min-replicas 0 --max-replicas 2 \
+              --cpu 1 --memory 2Gi
+          else
+            az containerapp create -n $API_APP -g $RG --environment $ENV_NAME \
+              --image $API_IMAGE \
+              --target-port 8000 --ingress external \
+              --set-env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
+                             ENABLE_STRUCTURED_EXTRACT=true \
+                             LLM_MODEL_PROVIDER=openai \
+                             LLM_MODEL_NAME=gpt-4o-mini \
+                             RERANK_CANDIDATES=10 \
+                             OPENAI_API_KEY=secretref:OPENAI_KEY \
+              --secrets OPENAI_KEY=${{ secrets.OPENAI_KEY }} \
+              --min-replicas 0 --max-replicas 2 \
+              --cpu 1 --memory 2Gi
+          fi
+
+      # UI (external) – potrebuje API_BASE = FQDN API
+      - name: Deploy UI
+        run: |
+          set -e
+          API_FQDN=$(az containerapp show -n $API_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
+          if az containerapp show -n $UI_APP -g $RG >/dev/null 2>&1; then
+            az containerapp update -n $UI_APP -g $RG \
+              --image $UI_IMAGE \
+              --set-env-vars API_BASE=https://$API_FQDN \
+              --min-replicas 0 --max-replicas 2 \
+              --cpu 1 --memory 1Gi
+          else
+            az containerapp create -n $UI_APP -g $RG --environment $ENV_NAME \
+              --image $UI_IMAGE \
+              --target-port 8501 --ingress external \
+              --set-env-vars API_BASE=https://$API_FQDN \
+              --min-replicas 0 --max-replicas 2 \
+              --cpu 1 --memory 1Gi
+          fi
+
+      # Seed + ingest po deploy (nech je demo plné)
+      - name: Seed sample data
+        run: az containerapp exec -n $API_APP -g $RG --command "python -m scripts.seed_sample"
+
+      - name: Ingest all (soft DQ)
+        run: az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"
