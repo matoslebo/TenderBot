@@ -1,78 +1,113 @@
-name: build-deploy-azure
+name: Deploy
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - 'app/**'
-      - 'ui/**'
-      - 'Dockerfile'
-      - 'Dockerfile.ui'
-      - 'requirements.txt'
-      - '.github/workflows/deploy.yml'
-      - 'infra/**'
+  workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
     env:
       RG: ${{ secrets.AZURE_RESOURCE_GROUP }}
       ACR: ${{ secrets.ACR_LOGIN_SERVER }}
       ACR_NAME: ${{ secrets.ACR_NAME }}
+
+      ENV_NAME: ts-env
+      QDRANT_APP: ts-qdrant
       API_APP: ts-api
       UI_APP: ts-ui
-      QDRANT_APP: ts-qdrant
-      ENV_NAME: ts-env      # ak máš iné meno v bicepe, uprav
+
       API_IMAGE: ${{ secrets.ACR_LOGIN_SERVER }}/api:${{ github.sha }}
       UI_IMAGE:  ${{ secrets.ACR_LOGIN_SERVER }}/ui:${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
 
-      # Login do Azure (OIDC / service principal)
-      - uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      # Login do ACR a build & push oboch image
+      # Prihlásenie do ACR na push image-ov
       - name: ACR login
-        run: az acr login -n $ACR_NAME
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
+      # Diagnostika stromu (užitočné pri hľadaní Dockerfile)
       - name: Debug workspace tree
         run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           pwd
           ls -la
-          echo "Dockerfiles found:"
+          echo "Dockerfiles found (depth<=3):"
           find . -maxdepth 3 -type f -iname "Dockerfile*"
 
-      - name: Build & push API
+      # Auto-detekcia Dockerfile pre API (koreň alebo ./TenderBot)
+      - name: Detect API Dockerfile
+        id: detect_api
+        run: |
+          set -e
+          ROOT="${GITHUB_WORKSPACE}"
+          if [ -f "$ROOT/Dockerfile" ]; then
+            echo "CTX=$ROOT" >> $GITHUB_OUTPUT
+            echo "FILE=$ROOT/Dockerfile" >> $GITHUB_OUTPUT
+          elif [ -f "$ROOT/TenderBot/Dockerfile" ]; then
+            echo "CTX=$ROOT/TenderBot" >> $GITHUB_OUTPUT
+            echo "FILE=$ROOT/TenderBot/Dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Neviem nájsť Dockerfile pre API"
+            exit 1
+          fi
+
+      # Auto-detekcia Dockerfile pre UI
+      - name: Detect UI Dockerfile
+        id: detect_ui
+        run: |
+          set -e
+          ROOT="${GITHUB_WORKSPACE}"
+          if [ -f "$ROOT/Dockerfile.ui" ]; then
+            echo "CTX=$ROOT" >> $GITHUB_OUTPUT
+            echo "FILE=$ROOT/Dockerfile.ui" >> $GITHUB_OUTPUT
+          elif [ -f "$ROOT/TenderBot/Dockerfile.ui" ]; then
+            echo "CTX=$ROOT/TenderBot" >> $GITHUB_OUTPUT
+            echo "FILE=$ROOT/TenderBot/Dockerfile.ui" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Neviem nájsť Dockerfile.ui pre UI"
+            exit 1
+          fi
+
+      # Build & push API image do ACR
+      - name: Build & push API image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ${{ steps.detect_api.outputs.CTX }}
+          file:    ${{ steps.detect_api.outputs.FILE }}
           push: true
           tags: ${{ env.API_IMAGE }}
           provenance: false
 
-      - name: Build & push UI
+      # Build & push UI image do ACR
+      - name: Build & push UI image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile.ui
+          context: ${{ steps.detect_ui.outputs.CTX }}
+          file:    ${{ steps.detect_ui.outputs.FILE }}
           push: true
           tags: ${{ env.UI_IMAGE }}
           provenance: false
-      # CLI extension pre Container Apps
+
+      # Login do Azure (SPN JSON zo secrets.AZURE_CREDENTIALS)
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # CLI rozšírenie pre Container Apps
       - name: Enable Container Apps extension
         run: |
           az extension add --name containerapp --yes || az extension update --name containerapp
           az provider register --namespace Microsoft.App
 
       # Qdrant (internal ingress) – idempotent create/update
-      - name: Deploy Qdrant
+      - name: Deploy Qdrant (internal)
         run: |
           set -e
           if az containerapp show -n $QDRANT_APP -g $RG >/dev/null 2>&1; then
@@ -88,8 +123,8 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-      # API (external) – napojenie na interný Qdrant + LLM key v secretoch
-      - name: Deploy API
+      # API (external) – ťahá image z ACR, prepojené na Qdrant a LLM key zo secrets
+      - name: Deploy API (external)
         run: |
           set -e
           if az containerapp show -n $API_APP -g $RG >/dev/null 2>&1; then
@@ -108,6 +143,7 @@ jobs:
             az containerapp create -n $API_APP -g $RG --environment $ENV_NAME \
               --image $API_IMAGE \
               --target-port 8000 --ingress external \
+              --registry-server $ACR \
               --set-env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
                              ENABLE_STRUCTURED_EXTRACT=true \
                              LLM_MODEL_PROVIDER=openai \
@@ -119,8 +155,8 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-      # UI (external) – potrebuje API_BASE = FQDN API
-      - name: Deploy UI
+      # UI (external) – nastav API_BASE na FQDN API
+      - name: Deploy UI (external)
         run: |
           set -e
           API_FQDN=$(az containerapp show -n $API_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
@@ -134,14 +170,39 @@ jobs:
             az containerapp create -n $UI_APP -g $RG --environment $ENV_NAME \
               --image $UI_IMAGE \
               --target-port 8501 --ingress external \
+              --registry-server $ACR \
               --set-env-vars API_BASE=https://$API_FQDN \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 1Gi
           fi
 
-      # Seed + ingest po deploy (nech je demo plné)
+      # Seed + ingest (s jednoduchým retry, kým sa pod) – prakticky naplní demo
       - name: Seed sample data
-        run: az containerapp exec -n $API_APP -g $RG --command "python -m scripts.seed_sample"
+        run: |
+          set -e
+          for i in {1..5}; do
+            if az containerapp exec -n $API_APP -g $RG --command "python -m scripts.seed_sample"; then
+              exit 0
+            fi
+            echo "Retry seed ($i/5) o 10s…"; sleep 10
+          done
+          echo "::error::Seed sa nepodaril po 5 pokusoch"; exit 1
 
       - name: Ingest all (soft DQ)
-        run: az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"
+        run: |
+          set -e
+          for i in {1..5}; do
+            if az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"; then
+              exit 0
+            fi
+            echo "Retry ingest ($i/5) o 10s…"; sleep 10
+          done
+          echo "::error::Ingest sa nepodaril po 5 pokusoch"; exit 1
+
+      # Výpis live URL (skopíruj do README)
+      - name: Show live URLs
+        run: |
+          API_FQDN=$(az containerapp show -n $API_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
+          UI_FQDN=$(az containerapp show -n $UI_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
+          echo "API: https://$API_FQDN"
+          echo "UI:  https://$UI_FQDN"
