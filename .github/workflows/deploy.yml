@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Prihlásenie do ACR na push image-ov
+      # Login to ACR to push images
       - name: ACR login
         uses: azure/docker-login@v1
         with:
@@ -31,50 +31,55 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      # Diagnostika stromu (užitočné pri hľadaní Dockerfile)
+      # Debug tree to see where files are
       - name: Debug workspace tree
         run: |
           echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
           pwd
           ls -la
-          echo "Dockerfiles found (depth<=3):"
-          find . -maxdepth 3 -type f -iname "Dockerfile*"
+          echo "Dockerfiles found (depth<=4):"
+          find . -maxdepth 4 -type f -iname "Dockerfile*"
 
-      # Auto-detekcia Dockerfile pre API (koreň alebo ./TenderBot)
+      # Detect API Dockerfile: prefer Dockerfile.api, fallback to Dockerfile
       - name: Detect API Dockerfile
         id: detect_api
         run: |
           set -e
           ROOT="${GITHUB_WORKSPACE}"
-          if [ -f "$ROOT/Dockerfile.api" ]; then
-            echo "CTX=$ROOT" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/Dockerfile.api" >> $GITHUB_OUTPUT
-          elif [ -f "$ROOT/TenderBot/Dockerfile.api" ]; then
-            echo "CTX=$ROOT/TenderBot" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/TenderBot/Dockerfile.api" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Neviem nájsť Dockerfile.api pre API"
+          # prefer Dockerfile.api anywhere in repo
+          API_FILE="$(git ls-files | grep -Ei '(^|/)Dockerfile\.api$' | head -n1 || true)"
+          if [ -z "$API_FILE" ]; then
+            # fallback to plain Dockerfile if you ever rename it
+            API_FILE="$(git ls-files | grep -Ei '(^|/)Dockerfile$' | head -n1 || true)"
+          fi
+          if [ -z "$API_FILE" ]; then
+            echo "::error::Could not find Dockerfile.api (or Dockerfile) for API. Is it committed?"
             exit 1
           fi
+          API_CTX="$(dirname "$API_FILE")"
+          echo "CTX=$GITHUB_WORKSPACE/$API_CTX" >> $GITHUB_OUTPUT
+          echo "FILE=$GITHUB_WORKSPACE/$API_FILE" >> $GITHUB_OUTPUT
+          echo "API context: $API_CTX"
+          echo "API file:    $API_FILE"
 
-      # Auto-detekcia Dockerfile pre UI
+      # Detect UI Dockerfile: expect Dockerfile.ui
       - name: Detect UI Dockerfile
         id: detect_ui
         run: |
           set -e
           ROOT="${GITHUB_WORKSPACE}"
-          if [ -f "$ROOT/Dockerfile.ui" ]; then
-            echo "CTX=$ROOT" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/Dockerfile.ui" >> $GITHUB_OUTPUT
-          elif [ -f "$ROOT/TenderBot/Dockerfile.ui" ]; then
-            echo "CTX=$ROOT/TenderBot" >> $GITHUB_OUTPUT
-            echo "FILE=$ROOT/TenderBot/Dockerfile.ui" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Neviem nájsť Dockerfile.ui pre UI"
+          UI_FILE="$(git ls-files | grep -Ei '(^|/)Dockerfile\.ui$' | head -n1 || true)"
+          if [ -z "$UI_FILE" ]; then
+            echo "::error::Could not find Dockerfile.ui for UI. Is it committed?"
             exit 1
           fi
+          UI_CTX="$(dirname "$UI_FILE")"
+          echo "CTX=$GITHUB_WORKSPACE/$UI_CTX" >> $GITHUB_OUTPUT
+          echo "FILE=$GITHUB_WORKSPACE/$UI_FILE" >> $GITHUB_OUTPUT
+          echo "UI context: $UI_CTX"
+          echo "UI file:    $UI_FILE"
 
-      # Build & push API image do ACR
+      # Build & push API image
       - name: Build & push API image
         uses: docker/build-push-action@v5
         with:
@@ -84,7 +89,7 @@ jobs:
           tags: ${{ env.API_IMAGE }}
           provenance: false
 
-      # Build & push UI image do ACR
+      # Build & push UI image
       - name: Build & push UI image
         uses: docker/build-push-action@v5
         with:
@@ -94,19 +99,19 @@ jobs:
           tags: ${{ env.UI_IMAGE }}
           provenance: false
 
-      # Login do Azure (SPN JSON zo secrets.AZURE_CREDENTIALS)
+      # Azure login (Service Principal JSON in AZURE_CREDENTIALS)
       - name: Azure login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # CLI rozšírenie pre Container Apps
+      # Enable Container Apps CLI extension
       - name: Enable Container Apps extension
         run: |
           az extension add --name containerapp --yes || az extension update --name containerapp
           az provider register --namespace Microsoft.App
 
-      # Qdrant (internal ingress) – idempotent create/update
+      # Qdrant (internal ingress)
       - name: Deploy Qdrant (internal)
         run: |
           set -e
@@ -123,7 +128,7 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-      # API (external) – ťahá image z ACR, prepojené na Qdrant a LLM key zo secrets
+      # API (external)
       - name: Deploy API (external)
         run: |
           set -e
@@ -155,7 +160,7 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-      # UI (external) – nastav API_BASE na FQDN API
+      # UI (external) – point to API FQDN
       - name: Deploy UI (external)
         run: |
           set -e
@@ -176,7 +181,7 @@ jobs:
               --cpu 1 --memory 1Gi
           fi
 
-      # Seed + ingest (s jednoduchým retry, kým sa pod) – prakticky naplní demo
+      # Seed + ingest with simple retry (so the demo is populated)
       - name: Seed sample data
         run: |
           set -e
@@ -184,9 +189,9 @@ jobs:
             if az containerapp exec -n $API_APP -g $RG --command "python -m scripts.seed_sample"; then
               exit 0
             fi
-            echo "Retry seed ($i/5) o 10s…"; sleep 10
+            echo "Retry seed ($i/5) in 10s…"; sleep 10
           done
-          echo "::error::Seed sa nepodaril po 5 pokusoch"; exit 1
+          echo "::error::Seed failed after 5 attempts"; exit 1
 
       - name: Ingest all (soft DQ)
         run: |
@@ -195,11 +200,11 @@ jobs:
             if az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"; then
               exit 0
             fi
-            echo "Retry ingest ($i/5) o 10s…"; sleep 10
+            echo "Retry ingest ($i/5) in 10s…"; sleep 10
           done
-          echo "::error::Ingest sa nepodaril po 5 pokusoch"; exit 1
+          echo "::error::Ingest failed after 5 attempts"; exit 1
 
-      # Výpis live URL (skopíruj do README)
+      # Print live URLs
       - name: Show live URLs
         run: |
           API_FQDN=$(az containerapp show -n $API_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
