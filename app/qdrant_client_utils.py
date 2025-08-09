@@ -1,4 +1,3 @@
-
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qm
 

@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
