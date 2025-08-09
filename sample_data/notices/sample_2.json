@@ -1,0 +1,16 @@
+{
+  "id": "8b16503e-aecc-47c0-978b-4dccb7067ea7",
+  "title": "Kybernetický audit a penetračné testy pre nemocnicu",
+  "buyer": "Fakultná nemocnica Olomouc",
+  "country": "CZ",
+  "region": "Olomoucký kraj",
+  "cpv": [
+    "72212730",
+    "72222300"
+  ],
+  "estimated_value_eur": 85000.0,
+  "deadline": "2025-08-21T08:58:02.372032Z",
+  "language": "cs",
+  "url": "https://example.com/tender/2",
+  "text": "Předmětem zakázky je provedení kybernetického auditu dle NIS2 a následné penetrační testy. Zadavatel vyžaduje ISO 27001, doložení kvalifikace auditorů a report do 30 dnů od podpisu smlouvy."
+}

@@ -1,0 +1,20 @@
+profiles:
+  it_sk_cz_daily:
+    query: "kybernetický audit OR informačný systém OR ISO 27001"
+    cpv_prefixes: ["72"]        # IT služby
+    countries: ["SK","CZ"]      # filter podľa country payloadu (ak je)
+    max_results: 20
+    email_to:
+      - tvoje_meno@firma.com
+    subject: "TenderSense – denné alerty (IT SK/CZ)"
+    frequency: "daily"          # alebo "weekly"
+
+  security_cz_weekly:
+    query: "penetrační testy OR kybernetický audit NIS2"
+    cpv_prefixes: ["72"]
+    countries: ["CZ"]
+    max_results: 30
+    email_to:
+      - sec_team@firma.com
+    subject: "TenderSense – týždenné alerty (Security CZ)"
+    frequency: "weekly"

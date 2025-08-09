@@ -1,0 +1,43 @@
+
+name: deploy-api
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'app/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-api.yml'
+      - 'requirements.txt'
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: ACR login
+        run: az acr login -n ${{ secrets.ACR_NAME }}
+      - name: Build & push
+        run: |
+          ACR=${{ secrets.ACR_LOGIN_SERVER }}
+          IMAGE=$ACR/api:${{ github.sha }}
+          docker build -t $IMAGE -f Dockerfile .
+          docker push $IMAGE
+      - name: Deploy to Container Apps
+        uses: azure/container-apps-deploy@v1
+        with:
+          containerAppName: ts-api
+          resourceGroup: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          imageToDeploy: ${{ secrets.ACR_LOGIN_SERVER }}/api:${{ github.sha }}
+          environmentVariables: |
+            QDRANT_URL=http://ts-qdrant:6333
+            ENABLE_STRUCTURED_EXTRACT=true
+            LLM_MODEL_PROVIDER=openai
+            LLM_MODEL_NAME=gpt-4o-mini
+            OPENAI_API_KEY=secretref:OPENAI_KEY
+          secrets: |
+            OPENAI_KEY=${{ secrets.OPENAI_KEY }}

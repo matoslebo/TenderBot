@@ -1,0 +1,12 @@
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+qdrant-client>=1.8
+sentence-transformers>=3.0.1
+python-dotenv>=1.0.1
+requests>=2.32
+beautifulsoup4>=4.12
+great_expectations>=0.18
+prefect-email>=0.4
+pydantic>=2.5
+dateparser>=1.2
