@@ -44,8 +44,8 @@ jobs:
       - name: Build & push API
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./TenderBot
+          file: ./TenderBot/Dockerfile
           push: true
           tags: ${{ env.API_IMAGE }}
           provenance: false
@@ -53,8 +53,8 @@ jobs:
       - name: Build & push UI
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile.ui
+          context: ./TenderBot
+          file: ./TenderBot/Dockerfile.ui
           push: true
           tags: ${{ env.UI_IMAGE }}
           provenance: false
