@@ -5,6 +5,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run pre-commit (may modify files)
+        id: pc
+        run: pre-commit run --all-files
+        continue-on-error: true
+
+      - name: Commit pre-commit fixes
+        if: steps.pc.outcome == 'failure' && github.actor != 'github-actions[bot]'
+        run: |
+          if ! git diff --quiet; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore(pre-commit): auto-apply formatting [skip ci]"
+            git push
+          fi
+
+      # voliteľné: znova spusti pre-commit, už by mal prejsť
+      - name: Re-run pre-commit
+        if: steps.pc.outcome == 'failure'
+        run: pre-commit run --all-files
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
