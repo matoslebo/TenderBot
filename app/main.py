@@ -6,7 +6,6 @@ from .qdrant_client_utils import ensure_collection, search, upsert_points
 
 app = FastAPI(title="TenderBot API", version="0.1.0")
 
-
 class QARequest(BaseModel):
     question: str
 

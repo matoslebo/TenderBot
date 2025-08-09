@@ -5,7 +5,7 @@ jobs:
   lint-test:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # treba na auto-commit
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -16,16 +16,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      # (voliteľné) cache pip balíkov pre rýchlosť
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      # Pre-commit: môže upraviť súbory → nech padne, ale pokračujeme a commitneme fixy
+      # (voliteľné) pre-commit s autocommitom opráv
       - name: Run pre-commit (may modify files)
         id: precommit
         uses: pre-commit/action@v3.0.1
@@ -44,19 +35,24 @@ jobs:
             git push
           fi
 
-      # Po autocommite spustíme pre-commit znova, už by mal byť zelený
       - name: Re-run pre-commit
         if: steps.precommit.outcome == 'failure'
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files
 
-      # Inštalácia závislostí pre testy
+      # >>> DÔLEŽITÉ: nastav PYTHONPATH, aby pytest našiel 'app'
+      - name: Set PYTHONPATH (repo root + ./TenderBot)
+        run: echo "PYTHONPATH=$GITHUB_WORKSPACE:$GITHUB_WORKSPACE/TenderBot" >> $GITHUB_ENV
+
+      # Inštalácia závislostí (fallback, ak requirements.txt je v podpriečinku)
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f TenderBot/requirements.txt ]; then pip install -r TenderBot/requirements.txt; fi
           pip install pytest
 
+      # Spusti testy
       - name: Run tests
         run: pytest -q
