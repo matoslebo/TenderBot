@@ -41,6 +41,13 @@ jobs:
       - name: ACR login
         run: az acr login -n $ACR_NAME
 
+      - name: Debug workspace tree
+        run: |
+          pwd
+          ls -la
+          echo "Dockerfiles found:"
+          find . -maxdepth 3 -type f -iname "Dockerfile*"
+
       - name: Build & push API
         uses: docker/build-push-action@v5
         with:
@@ -138,9 +145,3 @@ jobs:
 
       - name: Ingest all (soft DQ)
         run: az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"
-
-      - name: Debug workspace tree
-        run: |
-          pwd
-          ls -la
-          find . -maxdepth 3 -type f -iname "Dockerfile*"
