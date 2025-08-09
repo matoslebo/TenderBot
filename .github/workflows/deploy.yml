@@ -43,12 +43,12 @@ jobs:
 
       - name: Build & push API
         run: |
-          docker build -t $API_IMAGE -f Dockerfile .
+          docker build -t $API_IMAGE -f TenderBot/Dockerfile TenderBot
           docker push $API_IMAGE
 
       - name: Build & push UI
         run: |
-          docker build -t $UI_IMAGE -f Dockerfile.ui .
+          docker build -t $UI_IMAGE -f TenderBot/Dockerfile.ui TenderBot
           docker push $UI_IMAGE
 
       # CLI extension pre Container Apps
