@@ -1,40 +1,52 @@
-# app/main.py
+from fastapi import FastAPI, Query
+from pydantic import BaseModel
+from typing import List
+from .embeddings import embed_texts
+from .qdrant_client_utils import ensure_collection, upsert_points, search
 
-from fastapi import FastAPI
-from .data.models import SearchRequest, SearchHit, QARequest, QAResponse
-from .llm.embeddings import embed_query
-from .search.qdrant_client import search as q_search
-from .search.reranker import rerank as ce_rerank     # ← PRIDANÉ
-from .rag.qa import simple_rag
+app = FastAPI(title="TenderBot API", version="0.1.0")
 
-import os
+class QARequest(BaseModel):
+    question: str
 
-app = FastAPI(title="TenderSense MVP")
-CANDIDATE_K = int(os.getenv("RERANK_CANDIDATES", "10"))  # koľko kandidátov dáme cross-encoderu
-
-@app.get("/")
+@app.get("/health")
 def health():
     return {"status": "ok"}
 
-@app.post("/search", response_model=list[SearchHit])
-def semantic_search(req: SearchRequest):
-    q = embed_query(req.query)
-    # 1) semantické kandidáty z Qdrant (embeddingy)
-    candidates = q_search(q, top_k=max(CANDIDATE_K, req.top_k))
-    # 2) reranking cez cross-encoder (párové skórovanie query × text)
-    ranked = ce_rerank(req.query, candidates, text_key="snippet", top_k=req.top_k)
-    # 3) vrátime top-K; do 'score' dáme rerank skóre (lepšie reflektuje finálne poradie)
-    return [SearchHit(
-        id=h["id"],
-        score=h.get("rerank_score", h["score"]),
-        title=h.get("title"),
-        snippet=h.get("snippet"),
-        url=h.get("url"),
-    ) for h in ranked]
+@app.post("/ingest")
+def ingest():
+    """Load sample_data/notices.csv and index to Qdrant."""
+    import csv, os
+    from .config import settings
 
-@app.post("/qa", response_model=QAResponse)
-def rag_qa(req: QARequest):
-    res = simple_rag(req.question, top_k=req.top_k)
-    return QAResponse(**res)
+    ensure_collection()
+    csv_path = os.path.join(os.path.dirname(__file__), "..", "sample_data", "notices.csv")
+    rows = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            rows.append(row)
+    texts = [f"{r['title']}\n{r['description']}" for r in rows]
+    vectors = embed_texts(texts)
+    payloads = [
+        {"id": r["id"], "title": r["title"], "description": r["description"], "url": r["url"], "deadline": r["deadline"]}
+        for r in rows
+    ]
+    upsert_points(payloads, vectors)
+    return {"ingested": len(rows)}
 
+@app.get("/search")
+def search_route(q: str = Query(..., min_length=2), k: int = 5):
+    vec = embed_texts([q])[0]
+    hits = search(vec, limit=k)
+    return {"query": q, "results": hits}
 
+@app.post("/qa")
+def qa(req: QARequest):
+    # Simple extractive pseudo-QA: find top doc and return its description + naive snippet
+    vec = embed_texts([req.question])[0]
+    hits = search(vec, limit=1)
+    if not hits:
+        return {"answer": "No relevant tenders found."}
+    doc = hits[0]
+    answer = f"Likely relevant: {doc.get('title')} (deadline: {doc.get('deadline')})\n{doc.get('description')}\nURL: {doc.get('url')}"
+    return {"answer": answer, "evidence": doc}
