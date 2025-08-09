@@ -42,14 +42,22 @@ jobs:
         run: az acr login -n $ACR_NAME
 
       - name: Build & push API
-        run: |
-          docker build -t $API_IMAGE -f TenderBot/Dockerfile TenderBot
-          docker push $API_IMAGE
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.API_IMAGE }}
+          provenance: false
 
       - name: Build & push UI
-        run: |
-          docker build -t $UI_IMAGE -f TenderBot/Dockerfile.ui TenderBot
-          docker push $UI_IMAGE
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ui
+          push: true
+          tags: ${{ env.UI_IMAGE }}
+          provenance: false
 
       # CLI extension pre Container Apps
       - name: Enable Container Apps extension
@@ -131,3 +139,9 @@ jobs:
 
       - name: Ingest all (soft DQ)
         run: az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"
+
+      - name: Debug workspace tree
+        run: |
+          pwd
+          ls -la
+          find . -maxdepth 3 -type f -iname "Dockerfile*"
