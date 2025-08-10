@@ -3,8 +3,8 @@ import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from .embeddings import embed_texts
-from .qdrant_client_utils import ensure_collection, search, upsert_points
+from .embeddings import embed_texts, embed_query
+from .qdrant_client_utils import ensure_collection, search, upsert_points, upsert_documents
 
 app = FastAPI(title="TenderBot API", version="0.1.0")
 
@@ -91,13 +91,26 @@ def require_admin(x_admin_token: str | None = Header(default=None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.post("/admin/seed")
-def admin_seed(x_admin_token: str = Header(..., alias="X-Admin-Token")):
-    enforce_admin(x_admin_token)
-    from scripts.seed_sample import main as seed_main  # import on-demand
 
-    seed_main()
-    return {"status": "ok"}
+
+@app.post("/admin/seed")
+def admin_seed(x_admin_token: str = Header("", alias="X-Admin-Token")):
+    if not os.getenv("ADMIN_TOKEN") or x_admin_token != os.getenv("ADMIN_TOKEN"):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    # jednoduché sample dáta (môžeš si upraviť)
+    texts = [
+        "Kybernetický audit podľa ISO 27001 hodnotí zhody s kontrolami prílohy A.",
+        "ISMS vyžaduje kontext organizácie, posúdenie rizík a ošetrenie rizík.",
+        "Interný audit sa typicky vykonáva raz ročne a overuje efektivitu kontrol.",
+    ]
+    metas = [{"source": "seed", "lang": "sk"} for _ in texts]
+
+    ensure_collection()
+    upsert_documents(texts, metas)
+
+    return {"inserted": len(texts)}
+
 
 
 @app.post("/admin/ingest")
