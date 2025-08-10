@@ -133,7 +133,6 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-      # API (external)
       - name: Deploy API (external)
         run: |
           set -e
@@ -145,8 +144,8 @@ jobs:
                         LLM_MODEL_PROVIDER=openai \
                         LLM_MODEL_NAME=gpt-4o-mini \
                         RERANK_CANDIDATES=10 \
-                        OPENAI_API_KEY=secretref:OPENAI_KEY \
-              --secrets OPENAI_KEY='${{ secrets.OPENAI_KEY }}' \
+                        OPENAI_API_KEY=secretref:openai-key \
+              --secrets openai-key='${{ secrets.OPENAI_KEY }}' \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           else
@@ -159,8 +158,8 @@ jobs:
                         LLM_MODEL_PROVIDER=openai \
                         LLM_MODEL_NAME=gpt-4o-mini \
                         RERANK_CANDIDATES=10 \
-                        OPENAI_API_KEY=secretref:OPENAI_KEY \
-              --secrets OPENAI_KEY='${{ secrets.OPENAI_KEY }}' \
+                        OPENAI_API_KEY=secretref:openai-key \
+              --secrets openai-key='${{ secrets.OPENAI_KEY }}' \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           fi
