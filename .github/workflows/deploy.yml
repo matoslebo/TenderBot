@@ -135,72 +135,97 @@ jobs:
 
       - name: Deploy API (external)
         run: |
-          set -e
-          if az containerapp show -n $API_APP -g $RG >/dev/null 2>&1; then
-            # ensure registry creds are set for the app (no role assignment needed)
-            az containerapp registry set -n $API_APP -g $RG \
-              --server $ACR \
+          set -euo pipefail
+
+          set_env_vars() {
+            local app="$1"; shift
+            # Try three syntaxes depending on extension version
+            az containerapp update -n "$app" -g "$RG" --set-env-vars "$@" && return 0 || true
+            az containerapp update -n "$app" -g "$RG" --env-vars "$@" && return 0 || true
+            az containerapp update -n "$app" -g "$RG" --environment-variables "$@" && return 0 || true
+            echo "::error::Failed to set env vars for $app"; return 1
+          }
+
+          ensure_secret() {
+            local app="$1"; local name="$2"; local value="$3"
+            az containerapp secret set -n "$app" -g "$RG" --secrets "$name=$value"
+          }
+
+          if az containerapp show -n "$API_APP" -g "$RG" >/dev/null 2>&1; then
+            # ensure registry credentials on the app (to avoid role assignment)
+            az containerapp registry set -n "$API_APP" -g "$RG" \
+              --server "$ACR" \
               --username '${{ secrets.ACR_USERNAME }}' \
               --password '${{ secrets.ACR_PASSWORD }}'
 
-            az containerapp update -n $API_APP -g $RG \
-              --image $API_IMAGE \
-              --env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
-                        ENABLE_STRUCTURED_EXTRACT=true \
-                        LLM_MODEL_PROVIDER=openai \
-                        LLM_MODEL_NAME=gpt-4o-mini \
-                        RERANK_CANDIDATES=10 \
-                        OPENAI_API_KEY=secretref:openai-key \
-              --secrets openai-key='${{ secrets.OPENAI_KEY }}' \
+            az containerapp update -n "$API_APP" -g "$RG" \
+              --image "$API_IMAGE" \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           else
-            az containerapp create -n $API_APP -g $RG --environment $ENV_NAME \
-              --image $API_IMAGE \
+            az containerapp create -n "$API_APP" -g "$RG" --environment "$ENV_NAME" \
+              --image "$API_IMAGE" \
               --target-port 8000 --ingress external \
-              --registry-server $ACR \
+              --registry-server "$ACR" \
               --registry-username '${{ secrets.ACR_USERNAME }}' \
               --registry-password '${{ secrets.ACR_PASSWORD }}' \
-              --env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
-                        ENABLE_STRUCTURED_EXTRACT=true \
-                        LLM_MODEL_PROVIDER=openai \
-                        LLM_MODEL_NAME=gpt-4o-mini \
-                        RERANK_CANDIDATES=10 \
-                        OPENAI_API_KEY=secretref:openai-key \
-              --secrets openai-key='${{ secrets.OPENAI_KEY }}' \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           fi
 
+          # secrets (lowercase name is required by ACA)
+          ensure_secret "$API_APP" openai-key '${{ secrets.OPENAI_KEY }}'
+
+          # env vars (with secretref) — try multiple flag syntaxes
+          set_env_vars "$API_APP" \
+            QDRANT_URL=http://$QDRANT_APP:6333 \
+            ENABLE_STRUCTURED_EXTRACT=true \
+            LLM_MODEL_PROVIDER=openai \
+            LLM_MODEL_NAME=gpt-4o-mini \
+            RERANK_CANDIDATES=10 \
+            OPENAI_API_KEY=secretref:openai-key
 
 
-      # UI (external) – point to API FQDN
+
+
       - name: Deploy UI (external)
         run: |
-          set -e
-          API_FQDN=$(az containerapp show -n $API_APP -g $RG --query properties.configuration.ingress.fqdn -o tsv)
-          if az containerapp show -n $UI_APP -g $RG >/dev/null 2>&1; then
-            az containerapp registry set -n $UI_APP -g $RG \
-              --server $ACR \
+          set -euo pipefail
+
+          set_env_vars() {
+            local app="$1"; shift
+            az containerapp update -n "$app" -g "$RG" --set-env-vars "$@" && return 0 || true
+            az containerapp update -n "$app" -g "$RG" --env-vars "$@" && return 0 || true
+            az containerapp update -n "$app" -g "$RG" --environment-variables "$@" && return 0 || true
+            echo "::error::Failed to set env vars for $app"; return 1
+          }
+
+          API_FQDN=$(az containerapp show -n "$API_APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+
+          if az containerapp show -n "$UI_APP" -g "$RG" >/dev/null 2>&1; then
+            az containerapp registry set -n "$UI_APP" -g "$RG" \
+              --server "$ACR" \
               --username '${{ secrets.ACR_USERNAME }}' \
               --password '${{ secrets.ACR_PASSWORD }}'
 
-            az containerapp update -n $UI_APP -g $RG \
-              --image $UI_IMAGE \
-              --env-vars API_BASE=https://$API_FQDN \
+            az containerapp update -n "$UI_APP" -g "$RG" \
+              --image "$UI_IMAGE" \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 1Gi
           else
-            az containerapp create -n $UI_APP -g $RG --environment $ENV_NAME \
-              --image $UI_IMAGE \
+            az containerapp create -n "$UI_APP" -g "$RG" --environment "$ENV_NAME" \
+              --image "$UI_IMAGE" \
               --target-port 8501 --ingress external \
-              --registry-server $ACR \
+              --registry-server "$ACR" \
               --registry-username '${{ secrets.ACR_USERNAME }}' \
               --registry-password '${{ secrets.ACR_PASSWORD }}' \
-              --env-vars API_BASE=https://$API_FQDN \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 1Gi
           fi
+
+          # env vars for UI
+          set_env_vars "$UI_APP" API_BASE="https://$API_FQDN"
+
 
 
 
