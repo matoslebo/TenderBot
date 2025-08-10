@@ -140,13 +140,13 @@ jobs:
           if az containerapp show -n $API_APP -g $RG >/dev/null 2>&1; then
             az containerapp update -n $API_APP -g $RG \
               --image $API_IMAGE \
-              --set-env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
-                             ENABLE_STRUCTURED_EXTRACT=true \
-                             LLM_MODEL_PROVIDER=openai \
-                             LLM_MODEL_NAME=gpt-4o-mini \
-                             RERANK_CANDIDATES=10 \
-                             OPENAI_API_KEY=secretref:OPENAI_KEY \
-              --secrets OPENAI_KEY=${{ secrets.OPENAI_KEY }} \
+              --env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
+                        ENABLE_STRUCTURED_EXTRACT=true \
+                        LLM_MODEL_PROVIDER=openai \
+                        LLM_MODEL_NAME=gpt-4o-mini \
+                        RERANK_CANDIDATES=10 \
+                        OPENAI_API_KEY=secretref:OPENAI_KEY \
+              --secrets OPENAI_KEY='${{ secrets.OPENAI_KEY }}' \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           else
@@ -154,16 +154,17 @@ jobs:
               --image $API_IMAGE \
               --target-port 8000 --ingress external \
               --registry-server $ACR \
-              --set-env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
-                             ENABLE_STRUCTURED_EXTRACT=true \
-                             LLM_MODEL_PROVIDER=openai \
-                             LLM_MODEL_NAME=gpt-4o-mini \
-                             RERANK_CANDIDATES=10 \
-                             OPENAI_API_KEY=secretref:OPENAI_KEY \
-              --secrets OPENAI_KEY=${{ secrets.OPENAI_KEY }} \
+              --env-vars QDRANT_URL=http://$QDRANT_APP:6333 \
+                        ENABLE_STRUCTURED_EXTRACT=true \
+                        LLM_MODEL_PROVIDER=openai \
+                        LLM_MODEL_NAME=gpt-4o-mini \
+                        RERANK_CANDIDATES=10 \
+                        OPENAI_API_KEY=secretref:OPENAI_KEY \
+              --secrets OPENAI_KEY='${{ secrets.OPENAI_KEY }}' \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 2Gi
           fi
+
 
       # UI (external) – point to API FQDN
       - name: Deploy UI (external)
@@ -173,7 +174,7 @@ jobs:
           if az containerapp show -n $UI_APP -g $RG >/dev/null 2>&1; then
             az containerapp update -n $UI_APP -g $RG \
               --image $UI_IMAGE \
-              --set-env-vars API_BASE=https://$API_FQDN \
+              --env-vars API_BASE=https://$API_FQDN \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 1Gi
           else
@@ -181,10 +182,11 @@ jobs:
               --image $UI_IMAGE \
               --target-port 8501 --ingress external \
               --registry-server $ACR \
-              --set-env-vars API_BASE=https://$API_FQDN \
+              --env-vars API_BASE=https://$API_FQDN \
               --min-replicas 0 --max-replicas 2 \
               --cpu 1 --memory 1Gi
           fi
+
 
       # Seed + ingest with simple retry (so the demo is populated)
       - name: Seed sample data
