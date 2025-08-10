@@ -3,9 +3,9 @@
 import csv
 import os
 from datetime import date, timedelta
+
 from app.embeddings import embed_documents
 from app.qdrant_client_utils import ensure_collection, upsert_documents
-
 
 
 def main():
@@ -56,6 +56,7 @@ def main():
     payloads = [{"id": f"seed-{i}", "title": t, "text": t} for i, t in enumerate(texts)]
     upsert_documents(embs, payloads)
     print("Seed OK")
+
 
 if __name__ == "__main__":
     main()
