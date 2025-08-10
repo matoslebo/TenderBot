@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import List
 
 from sentence_transformers import SentenceTransformer
+
 from .config import settings
 
 
@@ -18,7 +18,7 @@ def embed_query(text: str) -> list[float]:
     return vec.tolist()
 
 
-def embed_documents(texts: List[str]) -> List[List[float]]:
+def embed_documents(texts: list[str]) -> list[list[float]]:
     model = _get_model()
     vecs = model.encode(texts, normalize_embeddings=True)
     return [v.tolist() for v in vecs]
