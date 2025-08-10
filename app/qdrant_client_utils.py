@@ -2,27 +2,47 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Mapping
-from typing import Any
 from uuid import uuid4
+from typing import Iterable, Mapping, Any
+from functools import lru_cache
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client.models import Distance, VectorParams, PointStruct
 
-from .embeddings import embed_query, embed_texts
+from .embeddings import embed_texts, embed_query
 
-QDRANT_URL = os.getenv("QDRANT_URL", "http://ts-qdrant:6333")
+DEFAULT_QDRANT_URL = "http://ts-qdrant:6333"
 COLLECTION = os.getenv("QDRANT_COLLECTION", "docs")
 
-_client: QdrantClient | None = None
+
+def _resolve_qdrant_url() -> str:
+    """
+    Vráti použiteľnú URL na Qdrant.
+    Podporuje:
+      - plnú URL (http/https)
+      - len hostname[:port]
+      - prázdnu alebo len schému -> fallback na DEFAULT_QDRANT_URL
+    """
+    raw = (os.getenv("QDRANT_URL") or "").strip()
+
+    if not raw or raw in ("http://", "https://"):
+        return DEFAULT_QDRANT_URL
+
+    if raw.startswith(("http://", "https://")):
+        return raw
+
+    # Bez schémy: doplň http:// a port 6333, ak chýba
+    if ":" in raw:
+        return f"http://{raw}"
+    return f"http://{raw}:6333"
 
 
+@lru_cache(maxsize=1)
 def client() -> QdrantClient:
-    global _client
-    if _client is None:
-        # Ak je QDRANT_URL plné (http/https), používaj url=...
-        _client = QdrantClient(url=QDRANT_URL, timeout=30.0)
-    return _client
+    """
+    Lazy singleton Qdrant klient (bez global premenných).
+    """
+    return QdrantClient(url=_resolve_qdrant_url(), prefer_grpc=False, timeout=30.0)
 
 
 def _dim() -> int:
@@ -55,8 +75,8 @@ def upsert_documents(
     else:
         metadatas = list(metadatas)
 
-    points = []
-    for text, vec, meta in zip(texts, vecs, metadatas, strict=False):
+    points: list[PointStruct] = []
+    for text, vec, meta in zip(texts, vecs, metadatas):
         payload = {"text": text, **dict(meta)}
         points.append(PointStruct(id=uuid4().hex, vector=vec, payload=payload))
 
