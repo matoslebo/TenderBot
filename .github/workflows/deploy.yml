@@ -183,7 +183,10 @@ jobs:
             LLM_MODEL_PROVIDER=openai \
             LLM_MODEL_NAME=gpt-4o-mini \
             RERANK_CANDIDATES=10 \
-            OPENAI_API_KEY=secretref:openai-key
+            OPENAI_API_KEY=secretref:openai-key \
+            ADMIN_TOKEN=secretref:admin-token
+          
+          az containerapp secret set -n "$API_APP" -g "$RG" --secrets admin-token='${{ secrets.ADMIN_TOKEN }}'
 
 
 
@@ -226,28 +229,46 @@ jobs:
 
 
 
-      # Seed + ingest with simple retry (so the demo is populated)
-      - name: Seed sample data
+      - name: Wait for API readiness
         run: |
-          set -e
-          for i in {1..5}; do
-            if az containerapp exec -n $API_APP -g $RG --command "python -m scripts.seed_sample"; then
+          set -euo pipefail
+          API_FQDN=$(az containerapp show -n "$API_APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          for i in {1..30}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$API_FQDN/health" || true)
+            echo "Health check: $code"
+            if [ "$code" = "200" ]; then
+              echo "API ready at https://$API_FQDN"
               exit 0
             fi
+            sleep 5
+          done
+          echo "::error::API did not become ready"
+          exit 1
+
+      - name: Seed via /admin/seed
+        run: |
+          set -euo pipefail
+          API_FQDN=$(az containerapp show -n "$API_APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          for i in {1..5}; do
+            curl -sS -X POST "https://$API_FQDN/admin/seed" \
+              -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+              -H "Content-Type: application/json" && exit 0
             echo "Retry seed ($i/5) in 10s…"; sleep 10
           done
           echo "::error::Seed failed after 5 attempts"; exit 1
 
-      - name: Ingest all (soft DQ)
+      - name: Ingest via /admin/ingest
         run: |
-          set -e
+          set -euo pipefail
+          API_FQDN=$(az containerapp show -n "$API_APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
           for i in {1..5}; do
-            if az containerapp exec -n $API_APP -g $RG --command "python - <<'PY'\nfrom flows.ingest_all import ingest_all\nprint(ingest_all(dq_fail_on_error=False))\nPY"; then
-              exit 0
-            fi
+            curl -sS -X POST "https://$API_FQDN/admin/ingest" \
+              -H "X-Admin-Token: ${{ secrets.ADMIN_TOKEN }}" \
+              -H "Content-Type: application/json" && exit 0
             echo "Retry ingest ($i/5) in 10s…"; sleep 10
           done
           echo "::error::Ingest failed after 5 attempts"; exit 1
+
 
       # Print live URLs
       - name: Show live URLs
