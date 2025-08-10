@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 import os
-from uuid import uuid4
-from typing import Iterable, Mapping, Any
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
+from typing import Any
+from uuid import uuid4
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .embeddings import embed_texts, embed_query
+from .embeddings import embed_query, embed_texts
 
 DEFAULT_QDRANT_URL = "http://ts-qdrant:6333"
 COLLECTION = os.getenv("QDRANT_COLLECTION", "docs")
@@ -76,7 +77,7 @@ def upsert_documents(
         metadatas = list(metadatas)
 
     points: list[PointStruct] = []
-    for text, vec, meta in zip(texts, vecs, metadatas):
+    for text, vec, meta in zip(texts, vecs, metadatas, strict=False):
         payload = {"text": text, **dict(meta)}
         points.append(PointStruct(id=uuid4().hex, vector=vec, payload=payload))
 
