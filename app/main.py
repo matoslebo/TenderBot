@@ -10,6 +10,7 @@ app = FastAPI(title="TenderBot API", version="0.1.0")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
+
 class QARequest(BaseModel):
     question: str
 
