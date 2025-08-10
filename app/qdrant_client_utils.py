@@ -93,3 +93,12 @@ def search(query_vector: list[float], limit: int = 5, collection: str = COLLECTI
         with_payload=True,
         with_vectors=False,
     )
+
+# --- Back-compat shim ---
+def upsert_points(
+    texts,
+    metadatas=None,
+    collection: str = COLLECTION,
+):
+
+    return upsert_documents(texts, metadatas, collection)
