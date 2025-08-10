@@ -187,7 +187,6 @@ jobs:
 
 
 
-
       - name: Deploy UI (external)
         run: |
           set -euo pipefail
@@ -211,7 +210,7 @@ jobs:
             az containerapp update -n "$UI_APP" -g "$RG" \
               --image "$UI_IMAGE" \
               --min-replicas 0 --max-replicas 2 \
-              --cpu 1 --memory 1Gi
+              --cpu 0.5 --memory 1Gi
           else
             az containerapp create -n "$UI_APP" -g "$RG" --environment "$ENV_NAME" \
               --image "$UI_IMAGE" \
@@ -220,12 +219,10 @@ jobs:
               --registry-username '${{ secrets.ACR_USERNAME }}' \
               --registry-password '${{ secrets.ACR_PASSWORD }}' \
               --min-replicas 0 --max-replicas 2 \
-              --cpu 1 --memory 1Gi
+              --cpu 0.5 --memory 1Gi
           fi
 
-          # env vars for UI
           set_env_vars "$UI_APP" API_BASE="https://$API_FQDN"
-
 
 
 
