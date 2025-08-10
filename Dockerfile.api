@@ -2,7 +2,6 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Dockerfile.api (výrez – pod WORKDIR /app a pred CMD)
 COPY app/ app/
 COPY scripts/ scripts/
 COPY flows/ flows/

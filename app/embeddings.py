@@ -1,13 +1,24 @@
-from sentence_transformers import SentenceTransformer
+from functools import lru_cache
 from typing import List
+
+from sentence_transformers import SentenceTransformer
 from .config import settings
 
-_model = SentenceTransformer(settings.embedding_model, device=settings.embedding_device)
+
+@lru_cache(maxsize=1)
+def _get_model() -> SentenceTransformer:
+    model_name = getattr(settings, "embedding_model", "sentence-transformers/all-MiniLM-L6-v2")
+    device = getattr(settings, "embedding_device", "cpu")
+    return SentenceTransformer(model_name, device=device)
 
 
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    return _model.encode(texts, normalize_embeddings=True).tolist()
+def embed_query(text: str) -> list[float]:
+    model = _get_model()
+    vec = model.encode([text], normalize_embeddings=True)[0]
+    return vec.tolist()
+
 
 def embed_documents(texts: List[str]) -> List[List[float]]:
-    """Lightweight wrapper so scripts.seed_sample can import it."""
-    return [embed_query(t) for t in texts]
+    model = _get_model()
+    vecs = model.encode(texts, normalize_embeddings=True)
+    return [v.tolist() for v in vecs]

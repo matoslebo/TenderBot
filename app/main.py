@@ -10,13 +10,6 @@ app = FastAPI(title="TenderBot API", version="0.1.0")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
-
-try:
-    from flows.ingest_all import ingest_all
-except ModuleNotFoundError:
-    from flows.ingest_flow import ingest_all
-
-
 class QARequest(BaseModel):
     question: str
 
@@ -83,11 +76,6 @@ def require_admin(x_admin_token: str | None = Header(default=None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
 @app.post("/admin/seed")
 def admin_seed(x_admin_token: str | None = Header(default=None)):
     require_admin(x_admin_token)
@@ -100,7 +88,10 @@ def admin_seed(x_admin_token: str | None = Header(default=None)):
 @app.post("/admin/ingest")
 def admin_ingest(x_admin_token: str | None = Header(default=None)):
     require_admin(x_admin_token)
-    from flows.ingest_all import ingest_all
+    try:
+        from flows.ingest_all import ingest_all
+    except ModuleNotFoundError:
+        from flows.ingest_flow import ingest_all  # fallback if you use this name
 
-    out = ingest_all(dq_fail_on_error=False)
-    return {"status": "ingested", "result": out}
+    ingest_all()
+    return {"status": "ingest started"}
