@@ -3,8 +3,8 @@ import os
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-from .embeddings import embed_texts, embed_query
-from .qdrant_client_utils import ensure_collection, search, upsert_points, upsert_documents
+from .embeddings import embed_texts
+from .qdrant_client_utils import ensure_collection, search, upsert_documents, upsert_points
 
 app = FastAPI(title="TenderBot API", version="0.1.0")
 
@@ -91,8 +91,6 @@ def require_admin(x_admin_token: str | None = Header(default=None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-
-
 @app.post("/admin/seed")
 def admin_seed(x_admin_token: str = Header("", alias="X-Admin-Token")):
     if not os.getenv("ADMIN_TOKEN") or x_admin_token != os.getenv("ADMIN_TOKEN"):
@@ -110,7 +108,6 @@ def admin_seed(x_admin_token: str = Header("", alias="X-Admin-Token")):
     upsert_documents(texts, metas)
 
     return {"inserted": len(texts)}
-
 
 
 @app.post("/admin/ingest")
