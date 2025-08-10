@@ -39,7 +39,14 @@ jobs:
           ls -la
           echo "Dockerfiles found (depth<=4):"
           find . -maxdepth 4 -type f -iname "Dockerfile*"
-
+      - name: Enable Container Apps extension (no subscription registration here)
+        run: |
+          az extension add --name containerapp --yes || az extension update --name containerapp
+          STATE=$(az provider show -n Microsoft.App --query registrationState -o tsv || echo Unknown)
+          echo "Microsoft.App provider state: $STATE"
+          if [ "$STATE" != "Registered" ]; then
+            echo "::warning::Resource provider 'Microsoft.App' is NOT registered on the subscription. Register it once from a user with subscription-level rights: 'az provider register -n Microsoft.App'."
+          fi
       # Detect API Dockerfile: prefer Dockerfile.api, fallback to Dockerfile
       - name: Detect API Dockerfile
         id: detect_api
