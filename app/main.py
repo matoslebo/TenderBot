@@ -11,6 +11,12 @@ app = FastAPI(title="TenderBot API", version="0.1.0")
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
 
+try:
+    from flows.ingest_all import ingest_all
+except ModuleNotFoundError:
+    from flows.ingest_flow import ingest_all
+
+
 class QARequest(BaseModel):
     question: str
 

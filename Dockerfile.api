@@ -2,8 +2,9 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app ./app
-COPY scripts ./scripts
-COPY sample_data ./sample_data
+# Dockerfile.api (výrez – pod WORKDIR /app a pred CMD)
+COPY app/ app/
+COPY scripts/ scripts/
+COPY flows/ flows/
 ENV PYTHONUNBUFFERED=1
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
