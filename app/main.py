@@ -14,7 +14,7 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 try:
     from flows.ingest_all import ingest_all
 except ModuleNotFoundError:
-    from flows.ingest_flow import ingest_all
+    pass
 
 
 class QARequest(BaseModel):
