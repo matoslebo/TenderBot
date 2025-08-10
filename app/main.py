@@ -19,13 +19,16 @@ class QARequest(BaseModel):
 def health():
     return {"status": "ok"}
 
+
 def enforce_admin(x_admin_token: str):
     expected = os.getenv("ADMIN_TOKEN")
     if not expected or x_admin_token != expected:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+
 try:
     from flows.ingest_all import ingest_all
+
     HAS_INGEST = True
 except ModuleNotFoundError:
     HAS_INGEST = False
@@ -92,8 +95,10 @@ def require_admin(x_admin_token: str | None = Header(default=None)):
 def admin_seed(x_admin_token: str = Header(..., alias="X-Admin-Token")):
     enforce_admin(x_admin_token)
     from scripts.seed_sample import main as seed_main  # import on-demand
+
     seed_main()
     return {"status": "ok"}
+
 
 @app.post("/admin/ingest")
 def admin_ingest(x_admin_token: str = Header(..., alias="X-Admin-Token")):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from functools import lru_cache
 
 from sentence_transformers import SentenceTransformer
@@ -34,5 +35,6 @@ def embed_text(text: str) -> list[float]:
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Batch alias for embed_documents (expected by app.main import)."""
     return embed_documents(texts)
+
 
 __all__ = ["embed_texts", "embed_query", "embed_documents"]
