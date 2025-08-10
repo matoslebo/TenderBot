@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, Query, Header, HTTPException
+
+from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from .embeddings import embed_texts
@@ -8,6 +9,7 @@ from .qdrant_client_utils import ensure_collection, search, upsert_points
 app = FastAPI(title="TenderBot API", version="0.1.0")
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
+
 
 class QARequest(BaseModel):
     question: str
@@ -67,26 +69,32 @@ def qa(req: QARequest):
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
+
 def require_admin(x_admin_token: str | None = Header(default=None)):
     if not ADMIN_TOKEN:
         raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
     if x_admin_token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.post("/admin/seed")
 def admin_seed(x_admin_token: str | None = Header(default=None)):
     require_admin(x_admin_token)
     from scripts.seed_sample import main as seed_main
+
     seed_main()
     return {"status": "seeded"}
+
 
 @app.post("/admin/ingest")
 def admin_ingest(x_admin_token: str | None = Header(default=None)):
     require_admin(x_admin_token)
     from flows.ingest_all import ingest_all
+
     out = ingest_all(dq_fail_on_error=False)
     return {"status": "ingested", "result": out}
