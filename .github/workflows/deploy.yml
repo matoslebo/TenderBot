@@ -139,7 +139,7 @@ jobs:
 
           set_env_vars() {
             local app="$1"; shift
-            # Try three syntaxes depending on extension version
+            # Try multiple syntaxes depending on containerapp extension version
             az containerapp update -n "$app" -g "$RG" --set-env-vars "$@" && return 0 || true
             az containerapp update -n "$app" -g "$RG" --env-vars "$@" && return 0 || true
             az containerapp update -n "$app" -g "$RG" --environment-variables "$@" && return 0 || true
@@ -152,7 +152,7 @@ jobs:
           }
 
           if az containerapp show -n "$API_APP" -g "$RG" >/dev/null 2>&1; then
-            # ensure registry credentials on the app (to avoid role assignment)
+            # ensure registry credentials (avoid role assignment)
             az containerapp registry set -n "$API_APP" -g "$RG" \
               --server "$ACR" \
               --username '${{ secrets.ACR_USERNAME }}' \
@@ -173,10 +173,15 @@ jobs:
               --cpu 1 --memory 2Gi
           fi
 
-          # secrets (lowercase name is required by ACA)
-          ensure_secret "$API_APP" openai-key '${{ secrets.OPENAI_KEY }}'
+          # 1) set BOTH secrets first (must exist before referencing via secretref)
+          az containerapp secret set -n "$API_APP" -g "$RG" --secrets \
+            openai-key='${{ secrets.OPENAI_KEY }}' \
+            admin-token='${{ secrets.ADMIN_TOKEN }}'
 
-          # env vars (with secretref) — try multiple flag syntaxes
+          # 2) restart revision so secret changes take effect (avoids warning)
+          az containerapp revision restart -n "$API_APP" -g "$RG" || true
+
+          # 3) set env vars (including the secret refs)
           set_env_vars "$API_APP" \
             QDRANT_URL=http://$QDRANT_APP:6333 \
             ENABLE_STRUCTURED_EXTRACT=true \
@@ -185,8 +190,7 @@ jobs:
             RERANK_CANDIDATES=10 \
             OPENAI_API_KEY=secretref:openai-key \
             ADMIN_TOKEN=secretref:admin-token
-          
-          az containerapp secret set -n "$API_APP" -g "$RG" --secrets admin-token='${{ secrets.ADMIN_TOKEN }}'
+
 
 
 
