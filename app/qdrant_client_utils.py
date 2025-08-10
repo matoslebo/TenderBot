@@ -1,24 +1,29 @@
 # app/qdrant_client_utils.py
 from __future__ import annotations
+
 import os
-from uuid import uuid4
-from typing import Iterable, Mapping, Any
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
+from typing import Any
+from uuid import uuid4
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from .embeddings import embed_texts, embed_query
+from .embeddings import embed_query, embed_texts
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://ts-qdrant:6333")
 COLLECTION = os.getenv("QDRANT_COLLECTION", "docs")
+
 
 @lru_cache(maxsize=1)
 def client() -> QdrantClient:
     return QdrantClient(url=QDRANT_URL, timeout=30.0)
 
+
 def _dim() -> int:
     return len(embed_query("test"))
+
 
 def ensure_collection(name: str = COLLECTION) -> None:
     c = client()
@@ -28,6 +33,7 @@ def ensure_collection(name: str = COLLECTION) -> None:
             collection_name=name,
             vectors_config=VectorParams(size=_dim(), distance=Distance.COSINE),
         )
+
 
 def upsert_documents(
     texts: Iterable[str],
@@ -44,9 +50,10 @@ def upsert_documents(
         metadatas = list(metadatas)
     points = [
         PointStruct(id=uuid4().hex, vector=vec, payload={"text": text, **dict(meta)})
-        for text, vec, meta in zip(texts, vecs, metadatas)
+        for text, vec, meta in zip(texts, vecs, metadatas, strict=False)
     ]
     c.upsert(collection_name=collection, points=points)
+
 
 def upsert_points(
     points: Iterable[PointStruct] | Iterable[Mapping[str, Any]],
@@ -69,6 +76,7 @@ def upsert_points(
             payload = {k: v for k, v in p.items() if k not in ("id", "vector", "embedding")}
         norm.append(PointStruct(id=pid, vector=vec, payload=payload))
     c.upsert(collection_name=collection, points=norm)
+
 
 def search(query_vector: list[float], limit: int = 5, collection: str = COLLECTION):
     c = client()
